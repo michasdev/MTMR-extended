@@ -278,6 +278,7 @@ enum ItemType: Decodable {
     case darkMode
     case swipe(direction: String, fingers: Int, minOffset: Float, sourceApple: SourceProtocol?, sourceBash: SourceProtocol?)
     case upnext(from: Double, to: Double, maxToShow: Int, autoResize: Bool)
+    case gif(path: String, fps: Double, maxWidth: Double, maxHeight: Double, loop: Bool, preloadAllFrames: Bool)
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -310,6 +311,12 @@ enum ItemType: Decodable {
         case fingers
         case minOffset
         case maxToShow
+        case path
+        case fps
+        case maxWidth
+        case maxHeight
+        case loop
+        case preloadAllFrames
     }
 
     enum ItemTypeRaw: String, Decodable {
@@ -335,6 +342,7 @@ enum ItemType: Decodable {
         case darkMode
         case swipe
         case upnext
+        case gif
     }
 
     init(from decoder: Decoder) throws {
@@ -445,6 +453,15 @@ enum ItemType: Decodable {
             let autoResize = try container.decodeIfPresent(Bool.self, forKey: .autoResize) ?? false
             let interval = try container.decodeIfPresent(Double.self, forKey: .refreshInterval) ?? 60.0
             self = .upnext(from: from, to: to, maxToShow: maxToShow, autoResize: autoResize)
+
+        case .gif:
+            let path = try container.decode(String.self, forKey: .path)
+            let fps = max(1.0, min(60.0, try container.decodeIfPresent(Double.self, forKey: .fps) ?? 15.0))
+            let maxWidth = max(8.0, try container.decodeIfPresent(Double.self, forKey: .maxWidth) ?? 30.0)
+            let maxHeight = max(8.0, try container.decodeIfPresent(Double.self, forKey: .maxHeight) ?? 30.0)
+            let loop = try container.decodeIfPresent(Bool.self, forKey: .loop) ?? true
+            let preloadAllFrames = try container.decodeIfPresent(Bool.self, forKey: .preloadAllFrames) ?? false
+            self = .gif(path: path, fps: fps, maxWidth: maxWidth, maxHeight: maxHeight, loop: loop, preloadAllFrames: preloadAllFrames)
         }
     }
 }

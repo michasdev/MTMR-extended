@@ -7,6 +7,7 @@
 //
 
 import Cocoa
+import ImageIO
 
 struct ExactItem {
     let identifier: NSTouchBarItem.Identifier
@@ -63,7 +64,178 @@ extension ItemType {
             return "com.toxblh.mtmr.swipe."
         case .upnext(from: _, to: _, maxToShow: _, autoResize: _):
             return "com.connorgmeehan.mtmrup.next."
+        case .gif(path: _, fps: _, maxWidth: _, maxHeight: _, loop: _, preloadAllFrames: _):
+            return "com.toxblh.mtmr.gif."
         }
+    }
+}
+
+private class GifStore {
+    struct Frame {
+        let image: NSImage
+        let duration: TimeInterval
+    }
+    struct Manifest {
+        let source: CGImageSource
+        let frameCount: Int
+        let durations: [TimeInterval]
+    }
+    static let shared = GifStore()
+    private var framesCache: [String: [Frame]] = [:]
+    private var manifestCache: [String: Manifest] = [:]
+    private let queue = DispatchQueue(label: "com.toxblh.mtmr.gif.cache")
+
+    func frames(for path: String, maxWidth: CGFloat, maxHeight: CGFloat, preloadAllFrames: Bool) -> [Frame] {
+        queue.sync {
+            let key = "\(path)|\(Int(maxWidth))x\(Int(maxHeight))|\(preloadAllFrames)"
+            if let cached = framesCache[key] { return cached }
+            guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return [] }
+            let count = CGImageSourceGetCount(source)
+            let limit = preloadAllFrames ? count : min(count, 60)
+            var result: [Frame] = []
+            for i in 0..<limit {
+                guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+                let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                let duration = frameDuration(source: source, frameIndex: i)
+                result.append(Frame(image: image.resize(maxSize: NSSize(width: maxWidth, height: maxHeight)), duration: duration))
+            }
+            framesCache[key] = result
+            return result
+        }
+    }
+
+    func manifest(for path: String) -> Manifest? {
+        queue.sync {
+            if let cached = manifestCache[path] { return cached }
+            guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
+            let count = CGImageSourceGetCount(source)
+            guard count > 0 else { return nil }
+            let durations = (0..<count).map { frameDuration(source: source, frameIndex: $0) }
+            let manifest = Manifest(source: source, frameCount: count, durations: durations)
+            manifestCache[path] = manifest
+            return manifest
+        }
+    }
+
+    func image(path: String, frameIndex: Int, maxWidth: CGFloat, maxHeight: CGFloat) -> NSImage? {
+        guard let manifest = manifest(for: path), frameIndex < manifest.frameCount else { return nil }
+        guard let cgImage = CGImageSourceCreateImageAtIndex(manifest.source, frameIndex, nil) else { return nil }
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        return image.resize(maxSize: NSSize(width: maxWidth, height: maxHeight))
+    }
+
+    private func frameDuration(source: CGImageSource, frameIndex: Int) -> TimeInterval {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, frameIndex, nil) as? [CFString: Any],
+              let gif = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
+            return 0.1
+        }
+        let unclamped = gif[kCGImagePropertyGIFUnclampedDelayTime] as? Double
+        let clamped = gif[kCGImagePropertyGIFDelayTime] as? Double
+        return max(0.02, unclamped ?? clamped ?? 0.1)
+    }
+}
+
+final class GifTouchBarItem: NSCustomTouchBarItem {
+    private let frames: [GifStore.Frame]
+    private let path: String
+    private let maxWidth: CGFloat
+    private let maxHeight: CGFloat
+    private let fps: Double
+    private let preloadAllFrames: Bool
+    private let loop: Bool
+    private let imageView = NSImageView()
+    private let lazyFrameCache = NSCache<NSNumber, NSImage>()
+    private let decodeQueue = DispatchQueue(label: "com.toxblh.mtmr.gif.decode", qos: .userInitiated)
+    private var timer: DispatchSourceTimer?
+    private var frameIndex = 0
+
+    init(identifier: NSTouchBarItem.Identifier, path: String, fps: Double, maxWidth: CGFloat, maxHeight: CGFloat, loop: Bool, preloadAllFrames: Bool) {
+        self.path = path
+        self.maxWidth = maxWidth
+        self.maxHeight = maxHeight
+        self.fps = fps
+        self.preloadAllFrames = preloadAllFrames
+        self.frames = GifStore.shared.frames(for: path, maxWidth: maxWidth, maxHeight: maxHeight, preloadAllFrames: preloadAllFrames)
+        self.loop = loop
+        super.init(identifier: identifier)
+        lazyFrameCache.countLimit = 8
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.image = frames.first?.image ?? NSImage(named: NSImage.cautionName)
+        view = imageView
+        start()
+    }
+
+    required init?(coder: NSCoder) { nil }
+    deinit { timer?.cancel() }
+
+    private func start() {
+        let frameCount = preloadAllFrames ? frames.count : (GifStore.shared.manifest(for: path)?.frameCount ?? 0)
+        guard frameCount > 1 else { return }
+        scheduleNextTick()
+    }
+
+    private func scheduleNextTick() {
+        timer?.cancel()
+        let duration = frameDuration(for: frameIndex)
+        let interval = max(duration, 1.0 / max(1.0, fps))
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + interval, leeway: .milliseconds(8))
+        timer.setEventHandler { [weak self] in self?.next() }
+        self.timer = timer
+        timer.resume()
+    }
+
+    private func next() {
+        let frameCount = preloadAllFrames ? frames.count : (GifStore.shared.manifest(for: path)?.frameCount ?? 0)
+        guard frameCount > 0 else { return }
+        frameIndex += 1
+        if frameIndex >= frameCount {
+            if loop {
+                frameIndex = 0
+            } else {
+                frameIndex = frameCount - 1
+                if preloadAllFrames {
+                    imageView.image = frames[frameIndex].image
+                } else if let cached = lazyFrameCache.object(forKey: NSNumber(value: frameIndex)) {
+                    imageView.image = cached
+                } else if let decoded = GifStore.shared.image(path: path, frameIndex: frameIndex, maxWidth: maxWidth, maxHeight: maxHeight) {
+                    lazyFrameCache.setObject(decoded, forKey: NSNumber(value: frameIndex))
+                    imageView.image = decoded
+                }
+                timer?.cancel()
+                timer = nil
+                return
+            }
+        }
+        if preloadAllFrames {
+            imageView.image = frames[frameIndex].image
+        } else {
+            let idx = frameIndex
+            if let cached = lazyFrameCache.object(forKey: NSNumber(value: frameIndex)) {
+                imageView.image = cached
+            } else {
+                decodeQueue.async { [weak self] in
+                    guard let self = self else { return }
+                    if let decoded = GifStore.shared.image(path: self.path, frameIndex: idx, maxWidth: self.maxWidth, maxHeight: self.maxHeight) {
+                        self.lazyFrameCache.setObject(decoded, forKey: NSNumber(value: idx))
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self, self.frameIndex == idx else { return }
+                            self.imageView.image = decoded
+                        }
+                    }
+                }
+            }
+        }
+        scheduleNextTick()
+    }
+
+    private func frameDuration(for index: Int) -> TimeInterval {
+        if preloadAllFrames {
+            guard index < frames.count else { return 0.1 }
+            return frames[index].duration
+        }
+        guard let manifest = GifStore.shared.manifest(for: path), index < manifest.durations.count else { return 0.1 }
+        return manifest.durations[index]
     }
 }
 
@@ -390,6 +562,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = SwipeItem(identifier: identifier, direction: direction, fingers: fingers, minOffset: minOffset, sourceApple: sourceApple, sourceBash: sourceBash)
         case let .upnext(from: from, to: to, maxToShow: maxToShow, autoResize: autoResize):
             barItem = UpNextScrubberTouchBarItem(identifier: identifier, interval: 60, from: from, to: to, maxToShow: maxToShow, autoResize: autoResize)
+        case let .gif(path: path, fps: fps, maxWidth: maxWidth, maxHeight: maxHeight, loop: loop, preloadAllFrames: preloadAllFrames):
+            let resolvedPath = (path as NSString).expandingTildeInPath
+            barItem = GifTouchBarItem(identifier: identifier, path: resolvedPath, fps: fps, maxWidth: CGFloat(maxWidth), maxHeight: CGFloat(maxHeight), loop: loop, preloadAllFrames: preloadAllFrames)
         }
 
         if let action = self.action(forItem: item), let item = barItem as? CustomButtonTouchBarItem {

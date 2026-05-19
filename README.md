@@ -89,6 +89,7 @@ The pre-installed configuration contains less or more than you'll probably want,
 - pomodoro
 - network
 - upnext (Calendar events)
+- gif
 
 > Media Keys
 
@@ -490,7 +491,23 @@ by using background with color "#000000" and bordered == false you can create bu
     "base64": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAABGdB...."
     //or
     "filePath": "~/img.png"
-  }
+}
+```
+
+#### `gif`
+
+Use a local GIF file as a Touch Bar widget with configurable playback speed and memory strategy.
+
+```js
+{
+  "type": "gif",
+  "path": "~/Pictures/mtmr/nyan.gif", // required
+  "fps": 12,                          // optional (1...60, default 15)
+  "maxWidth": 30,                     // optional (default 30)
+  "maxHeight": 30,                    // optional (default 30)
+  "loop": true,                       // optional (default true)
+  "preloadAllFrames": false           // optional (default false; lower RAM for large GIFs)
+}
 ```
 
 - `matchAppId` displays the button only when active app's id matches given regexp
