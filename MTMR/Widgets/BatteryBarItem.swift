@@ -47,7 +47,7 @@ class BatteryInfo: NSObject {
 
     func start(notifyBlock: @escaping () -> Void) {
         self.notifyBlock = notifyBlock
-        let opaque = Unmanaged.passRetained(self).toOpaque()
+        let opaque = Unmanaged.passUnretained(self).toOpaque()
         let context = UnsafeMutableRawPointer(opaque)
         loop = IOPSNotificationCreateRunLoopSource({ context in
             guard let ctx = context else {
