@@ -147,6 +147,8 @@ class YandexWeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate 
 
     deinit {
         activity.invalidate()
+        updateWeatherTask?.cancel()
+        manager?.stopUpdatingLocation()
     }
 }
 

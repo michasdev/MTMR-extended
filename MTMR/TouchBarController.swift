@@ -177,7 +177,8 @@ final class GifTouchBarItem: NSCustomTouchBarItem {
     private func scheduleNextTick() {
         timer?.cancel()
         let duration = frameDuration(for: frameIndex)
-        let interval = max(duration, 1.0 / max(1.0, fps))
+        let cappedFPS = min(max(1.0, fps), 30.0)
+        let interval = max(duration, 1.0 / cappedFPS)
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + interval, leeway: .milliseconds(8))
         timer.setEventHandler { [weak self] in self?.next() }
@@ -260,6 +261,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     var swipeItems: [SwipeItem] = []
 
     var blacklistAppIdentifiers: [String] = []
+    private var activeAppUpdateWorkItem: DispatchWorkItem?
     var frontmostApplicationIdentifier: String? {
         return NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
@@ -306,6 +308,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar = NSTouchBar()
         jsonItems = newJsonItems
         itemDefinitions = [:]
+        leftIdentifiers = []
+        centerIdentifiers = []
+        rightIdentifiers = []
+        items = [:]
+        swipeItems = []
 
         loadItemDefinitions(jsonItems: jsonItems)
         
@@ -372,7 +379,16 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
 
     @objc func activeApplicationChanged(_: Notification) {
-        updateActiveApp()
+        scheduleActiveAppUpdate()
+    }
+
+    private func scheduleActiveAppUpdate() {
+        activeAppUpdateWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.updateActiveApp()
+        }
+        activeAppUpdateWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 
     func updateActiveApp() {

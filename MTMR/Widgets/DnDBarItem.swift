@@ -9,7 +9,8 @@
 import Foundation
 
 class DnDBarItem: CustomButtonTouchBarItem {
-    private var timer: Timer!
+    private var dndObserver: NSObjectProtocol?
+    private var refreshTimer: Timer?
 
     init(identifier: NSTouchBarItem.Identifier) {
         super.init(identifier: identifier, title: "")
@@ -18,13 +19,29 @@ class DnDBarItem: CustomButtonTouchBarItem {
 
         actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.DnDToggle() })
 
-        timer = Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        dndObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name(DoNotDisturb.dndPref),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+
+        refreshTimer = Timer.scheduledTimer(timeInterval: 30, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        refreshTimer?.tolerance = 5
 
         refresh()
     }
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
+        if let observer = dndObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
     }
 
     func DnDToggle() {
@@ -39,7 +56,7 @@ class DnDBarItem: CustomButtonTouchBarItem {
 
 public struct DoNotDisturb {
     private static let appId = "com.apple.notificationcenterui" as CFString
-    private static let dndPref = "com.apple.notificationcenterui.dndprefs_changed"
+    static let dndPref = "com.apple.notificationcenterui.dndprefs_changed"
 
     private static func set(_ key: String, value: CFPropertyList?) {
         CFPreferencesSetValue(key as CFString, value, appId, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost)

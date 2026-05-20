@@ -8,6 +8,7 @@
 import Cocoa
 
 class AppScrubberTouchBarItem: NSCustomTouchBarItem {
+    private static let iconCache = NSCache<NSString, NSImage>()
     private var scrollView = NSScrollView()
     private var autoResize: Bool = false
     private var widthConstraint: NSLayoutConstraint?
@@ -41,6 +42,10 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
     @objc func hardReloadItems() {
         applications = launchedApplications()
         applications += getDockPersistentAppsList()
@@ -51,7 +56,7 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     
     @objc func softReloadItems() {
         let frontMostAppId = self.frontmostApplicationIdentifier
-        let runningAppsIds = NSWorkspace.shared.runningApplications.map { $0.bundleIdentifier }
+        let runningAppsIds = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
         for barItem in items {
             let bundleId = barItem.dockItem.bundleIdentifier
             barItem.isRunning = runningAppsIds.contains(bundleId)
@@ -153,12 +158,26 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     }
 
     public func getIcon(forBundleIdentifier bundleIdentifier: String? = nil, orPath path: String? = nil) -> NSImage {
-        if let bundleIdentifier = bundleIdentifier, let appPath = NSWorkspace.shared.absolutePathForApplication(withBundleIdentifier: bundleIdentifier) {
-            return NSWorkspace.shared.icon(forFile: appPath)
+        if let bundleIdentifier = bundleIdentifier {
+            let key = "bundle:\(bundleIdentifier)" as NSString
+            if let cached = AppScrubberTouchBarItem.iconCache.object(forKey: key) {
+                return cached
+            }
+            if let appPath = NSWorkspace.shared.absolutePathForApplication(withBundleIdentifier: bundleIdentifier) {
+                let icon = NSWorkspace.shared.icon(forFile: appPath)
+                AppScrubberTouchBarItem.iconCache.setObject(icon, forKey: key)
+                return icon
+            }
         }
 
         if let path = path {
-            return NSWorkspace.shared.icon(forFile: path)
+            let key = "path:\(path)" as NSString
+            if let cached = AppScrubberTouchBarItem.iconCache.object(forKey: key) {
+                return cached
+            }
+            let icon = NSWorkspace.shared.icon(forFile: path)
+            AppScrubberTouchBarItem.iconCache.setObject(icon, forKey: key)
+            return icon
         }
 
         let genericIcon = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericDocumentIcon.icns")

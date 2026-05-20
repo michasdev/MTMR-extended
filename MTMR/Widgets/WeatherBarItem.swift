@@ -21,6 +21,7 @@ class WeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate {
     private var iconsSource: Dictionary<String, String>
 
     private var manager: CLLocationManager!
+    private var updateWeatherTask: URLSessionDataTask?
 
     init(identifier: NSTouchBarItem.Identifier, interval: TimeInterval, units: String, api_key: String, icon_type: String? = "text") {
         activity = NSBackgroundActivityScheduler(identifier: "\(identifier.rawValue).updatecheck")
@@ -77,11 +78,12 @@ class WeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate {
         if location != nil {
             let urlRequest = URLRequest(url: URL(string: "https://api.openweathermap.org/data/2.5/weather?lat=\(location.coordinate.latitude)&lon=\(location.coordinate.longitude)&units=\(units)&appid=\(api_key)")!)
 
-            let task = URLSession.shared.dataTask(with: urlRequest) { data, _, error in
+            updateWeatherTask?.cancel()
+            updateWeatherTask = URLSession.shared.dataTask(with: urlRequest) { data, _, error in
 
-                if error == nil {
+                if error == nil, let data = data {
                     do {
-                        let json = try JSONSerialization.jsonObject(with: data!, options: .mutableContainers) as! [String: AnyObject]
+                        let json = try JSONSerialization.jsonObject(with: data, options: .mutableContainers) as! [String: AnyObject]
 //                        print(json)
                         var temperature: Int!
                         var condition_icon = ""
@@ -110,7 +112,7 @@ class WeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate {
                 }
             }
 
-            task.resume()
+            updateWeatherTask?.resume()
         }
     }
 
@@ -138,5 +140,7 @@ class WeatherBarItem: CustomButtonTouchBarItem, CLLocationManagerDelegate {
     
     deinit {
         activity.invalidate()
+        updateWeatherTask?.cancel()
+        manager?.stopUpdatingLocation()
     }
 }

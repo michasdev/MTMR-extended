@@ -33,13 +33,18 @@ class NightShiftBarItem: CustomButtonTouchBarItem {
         
         actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.nightShiftAction() })
 
-        timer = Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        timer = Timer.scheduledTimer(timeInterval: 5, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        timer.tolerance = 1
 
         refresh()
     }
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        timer?.invalidate()
     }
 
     func nightShiftAction() {
