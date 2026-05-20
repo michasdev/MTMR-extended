@@ -364,7 +364,8 @@ To close a group, use the button:
 {
   "type": "dock",
   "filter": "(^Xcode$)|(Safari)|(.*player)",
-  "autoResize": true
+  "autoResize": true,
+  "showDockApps": false // If true, includes closed apps from macOS Dock at the end, preserving Dock order
 },
 ```
 
