@@ -347,6 +347,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let changed = didItemsChange(prevItems: prevItems, prevSwipeItems: prevSwipeItems)
 
         if !changed {
+            items = prevItems
+            swipeItems = prevSwipeItems
             return
         }
         
