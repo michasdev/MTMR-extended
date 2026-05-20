@@ -59,7 +59,7 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
         let runningAppsIds = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
         for barItem in items {
             let bundleId = barItem.dockItem.bundleIdentifier
-            barItem.isRunning = runningAppsIds.contains(bundleId)
+            barItem.isRunning = bundleId.map { runningAppsIds.contains($0) } ?? false
             barItem.isFrontmost = frontMostAppId == bundleId
         }
     }
