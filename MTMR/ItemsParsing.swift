@@ -105,7 +105,10 @@ class SupportedTypesHolder {
             return (
                 item: .staticButton(title: ""),
                 actions: [
-                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_ILLUMINATION_UP))
+                    Action(trigger: .singleTap, value: .custom(closure: {
+                        HIDPostAuxKey(NX_KEYTYPE_ILLUMINATION_UP)
+                        GenericKeyPress(keyCode: 145).send()
+                    }))
                 ],
                 legacyAction: .none,
                 legacyLongAction: .none,
@@ -118,7 +121,10 @@ class SupportedTypesHolder {
             return (
                 item: .staticButton(title: ""),
                 actions: [
-                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_ILLUMINATION_DOWN))
+                    Action(trigger: .singleTap, value: .custom(closure: {
+                        HIDPostAuxKey(NX_KEYTYPE_ILLUMINATION_DOWN)
+                        GenericKeyPress(keyCode: 144).send()
+                    }))
                 ],
                 legacyAction: .none,
                 legacyLongAction: .none,
@@ -262,7 +268,7 @@ enum ItemType: Decodable {
     case timeButton(formatTemplate: String, timeZone: String?, locale: String?)
     case battery
     case cpu(refreshInterval: Double)
-    case dock(autoResize: Bool, filter: String?)
+    case dock(autoResize: Bool, filter: String?, showDockApps: Bool)
     case volume
     case brightness(refreshInterval: Double)
     case weather(interval: Double, units: String, api_key: String, icon_type: String)
@@ -303,6 +309,7 @@ enum ItemType: Decodable {
         case flip
         case autoResize
         case filter
+        case showDockApps
         case disableMarquee
         case alternativeImages
         case sourceApple
@@ -380,7 +387,8 @@ enum ItemType: Decodable {
         case .dock:
             let autoResize = try container.decodeIfPresent(Bool.self, forKey: .autoResize) ?? false
             let filterRegexString = try container.decodeIfPresent(String.self, forKey: .filter)
-            self = .dock(autoResize: autoResize, filter: filterRegexString)
+            let showDockApps = try container.decodeIfPresent(Bool.self, forKey: .showDockApps) ?? false
+            self = .dock(autoResize: autoResize, filter: filterRegexString, showDockApps: showDockApps)
 
         case .volume:
             self = .volume

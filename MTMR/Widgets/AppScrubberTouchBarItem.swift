@@ -13,6 +13,7 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     private var autoResize: Bool = false
     private var widthConstraint: NSLayoutConstraint?
     private let filter: NSRegularExpression?
+    private let showDockApps: Bool
 
     private var persistentAppIdentifiers: [String] = []
     private var runningAppsIdentifiers: [String] = []
@@ -24,8 +25,9 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     private var applications: [DockItem] = []
     private var items: [DockBarItem] = []
 
-    init(identifier: NSTouchBarItem.Identifier, autoResize: Bool = false, filter: NSRegularExpression? = nil) {
+    init(identifier: NSTouchBarItem.Identifier, autoResize: Bool = false, filter: NSRegularExpression? = nil, showDockApps: Bool = false) {
         self.filter = filter
+        self.showDockApps = showDockApps
         super.init(identifier: identifier)
         self.autoResize = autoResize
         view = scrollView
@@ -48,7 +50,9 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
 
     @objc func hardReloadItems() {
         applications = launchedApplications()
-        applications += getDockPersistentAppsList()
+        if showDockApps {
+            applications += getDockPersistentAppsList()
+        }
         reloadData()
         softReloadItems()
         updateSize()
@@ -139,22 +143,44 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     
     private func launchedApplications() -> [DockItem] {
         runningAppsIdentifiers = []
+        let allRunningApps = NSWorkspace.shared.runningApplications
+        let runningAppsByBundleId = Dictionary(uniqueKeysWithValues: allRunningApps.compactMap { app -> (String, NSRunningApplication)? in
+            guard app.activationPolicy == NSApplication.ActivationPolicy.regular else { return nil }
+            guard let bundleIdentifier = app.bundleIdentifier else { return nil }
+            return (bundleIdentifier, app)
+        })
+
         var returnable: [DockItem] = []
-        for app in NSWorkspace.shared.runningApplications {
+        var addedBundleIds = Set<String>()
+
+        for bundleIdentifier in dockPersistentBundleIdentifiersInOrder() {
+            guard let app = runningAppsByBundleId[bundleIdentifier] else { continue }
+            if !passesFilter(for: app) { continue }
+
+            runningAppsIdentifiers.append(bundleIdentifier)
+            addedBundleIds.insert(bundleIdentifier)
+            let dockItem = DockItem(bundleIdentifier: bundleIdentifier, icon: app.icon ?? getIcon(forBundleIdentifier: bundleIdentifier), pid: app.processIdentifier)
+            returnable.append(dockItem)
+        }
+
+        for app in allRunningApps {
             guard app.activationPolicy == NSApplication.ActivationPolicy.regular else { continue }
             guard let bundleIdentifier = app.bundleIdentifier else { continue }
-            if let filter = self.filter,
-                let name = app.localizedName,
-                filter.numberOfMatches(in: name, options: [], range: NSRange(location: 0, length: name.count)) == 0 {
-                continue
-            }
-            
-            runningAppsIdentifiers.append(bundleIdentifier)
+            guard !addedBundleIds.contains(bundleIdentifier) else { continue }
+            if !passesFilter(for: app) { continue }
 
+            runningAppsIdentifiers.append(bundleIdentifier)
+            addedBundleIds.insert(bundleIdentifier)
             let dockItem = DockItem(bundleIdentifier: bundleIdentifier, icon: app.icon ?? getIcon(forBundleIdentifier: bundleIdentifier), pid: app.processIdentifier)
             returnable.append(dockItem)
         }
         return returnable
+    }
+
+    private func passesFilter(for app: NSRunningApplication) -> Bool {
+        guard let filter = self.filter else { return true }
+        guard let name = app.localizedName else { return false }
+        return filter.numberOfMatches(in: name, options: [], range: NSRange(location: 0, length: name.count)) > 0
     }
 
     public func getIcon(forBundleIdentifier bundleIdentifier: String? = nil, orPath path: String? = nil) -> NSImage {
@@ -187,7 +213,7 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
     public func getDockPersistentAppsList() -> [DockItem] {
         var returnable: [DockItem] = []
 
-        for bundleIdentifier in persistentAppIdentifiers {
+        for bundleIdentifier in dockPersistentBundleIdentifiersInOrder() {
             if !runningAppsIdentifiers.contains(bundleIdentifier) {
                 let dockItem = DockItem(bundleIdentifier: bundleIdentifier, icon: getIcon(forBundleIdentifier: bundleIdentifier))
                 returnable.append(dockItem)
@@ -195,6 +221,31 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
         }
 
         return returnable
+    }
+
+    private func dockPersistentBundleIdentifiersInOrder() -> [String] {
+        let dockDefaults = UserDefaults(suiteName: "com.apple.dock")
+        let persistentApps = dockDefaults?.array(forKey: "persistent-apps") as? [[String: Any]] ?? []
+
+        var bundleIdentifiers: [String] = []
+        for appInfo in persistentApps {
+            guard
+                let tileData = appInfo["tile-data"] as? [String: Any],
+                let fileData = tileData["file-data"] as? [String: Any],
+                let fileURL = fileData["_CFURLString"] as? String
+            else {
+                continue
+            }
+
+            if let bundleIdentifier = Bundle(url: URL(fileURLWithPath: fileURL))?.bundleIdentifier {
+                bundleIdentifiers.append(bundleIdentifier)
+            }
+        }
+
+        for customPersistent in persistentAppIdentifiers where !bundleIdentifiers.contains(customPersistent) {
+            bundleIdentifiers.append(customPersistent)
+        }
+        return bundleIdentifiers
     }
 }
 
