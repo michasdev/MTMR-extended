@@ -4,7 +4,8 @@ class DarkModeBarItem: CustomButtonTouchBarItem, Widget {
     static var name: String = "darkmode"
     static var identifier: String = "com.toxblh.mtmr.darkmode"
 
-    private var timer: Timer!
+    private var appearanceObserver: NSObjectProtocol?
+    private var refreshTimer: Timer?
 
     init(identifier: NSTouchBarItem.Identifier) {
         super.init(identifier: identifier, title: "")
@@ -13,13 +14,29 @@ class DarkModeBarItem: CustomButtonTouchBarItem, Widget {
 
         actions.append(ItemAction(trigger: .singleTap) { [weak self] in self?.DarkModeToggle() })
 
-        timer = Timer.scheduledTimer(timeInterval: 3, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+
+        refreshTimer = Timer.scheduledTimer(timeInterval: 30, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        refreshTimer?.tolerance = 5
 
         refresh()
     }
 
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
+        if let observer = appearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
     }
 
     func DarkModeToggle() {
@@ -54,4 +71,3 @@ struct DarkMode {
 func runAppleScript(_ source: String) -> String? {
     return NSAppleScript(source: source)?.executeAndReturnError(nil).stringValue
 }
-

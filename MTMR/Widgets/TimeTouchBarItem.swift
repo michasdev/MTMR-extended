@@ -14,8 +14,13 @@ class TimeTouchBarItem: CustomButtonTouchBarItem {
         }
         super.init(identifier: identifier, title: " ")
         timer = Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(updateTime), userInfo: nil, repeats: true)
+        timer.tolerance = 0.2
         isBordered = false
         updateTime()
+    }
+
+    deinit {
+        timer?.invalidate()
     }
 
     required init?(coder _: NSCoder) {
