@@ -32,7 +32,7 @@ extension ItemType {
             return "com.toxblh.mtmr.battery."
         case .cpu(refreshInterval: _):
             return "com.toxblh.mtmr.cpu."
-        case .dock(autoResize: _, filter: _):
+        case .dock(autoResize: _, filter: _, showDockApps: _):
             return "com.toxblh.mtmr.dock"
         case .volume:
             return "com.toxblh.mtmr.volume"
@@ -321,13 +321,20 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     
     func didItemsChange(prevItems: [NSTouchBarItem.Identifier: NSTouchBarItem], prevSwipeItems: [SwipeItem]) -> Bool {
         var changed = items.count != prevItems.count || swipeItems.count != prevSwipeItems.count
-        
+
+        if !changed && Set(items.keys) != Set(prevItems.keys) {
+            changed = true
+        }
+
         if !changed {
-            for (item, prevItem) in zip(items, prevItems) {
-                if item.key != prevItem.key {
-                    changed = true
-                    break
-                }
+            let currentLeft = leftIdentifiers.filter { items[$0] != nil }
+            let previousLeft = leftIdentifiers.filter { prevItems[$0] != nil }
+            let currentCenter = centerIdentifiers.filter { items[$0] != nil }
+            let previousCenter = centerIdentifiers.filter { prevItems[$0] != nil }
+            let currentRight = rightIdentifiers.filter { items[$0] != nil }
+            let previousRight = rightIdentifiers.filter { prevItems[$0] != nil }
+            if currentLeft != previousLeft || currentCenter != previousCenter || currentRight != previousRight {
+                changed = true
             }
         }
 
@@ -352,6 +359,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let changed = didItemsChange(prevItems: prevItems, prevSwipeItems: prevSwipeItems)
 
         if !changed {
+            items = prevItems
+            swipeItems = prevSwipeItems
             return
         }
         
@@ -449,7 +458,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         items = [:]
         swipeItems = []
 
-        for (identifier, definition) in itemDefinitions {
+        let orderedIdentifiers = leftIdentifiers + centerIdentifiers + rightIdentifiers
+        for identifier in orderedIdentifiers {
+            guard let definition = itemDefinitions[identifier] else {
+                continue
+            }
             var show = true
             
             if let frontApp = frontmostApplicationIdentifier {
@@ -530,15 +543,15 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             barItem = BatteryBarItem(identifier: identifier)
         case let .cpu(refreshInterval: refreshInterval):
             barItem = CPUBarItem(identifier: identifier, refreshInterval: refreshInterval)
-        case let .dock(autoResize: autoResize, filter: regexString):
+        case let .dock(autoResize: autoResize, filter: regexString, showDockApps: showDockApps):
             if let regexString = regexString {
                 guard let regex = try? NSRegularExpression(pattern: regexString, options: []) else {
                     barItem = CustomButtonTouchBarItem(identifier: identifier, title: "Bad regex")
                     break
                 }
-                barItem = AppScrubberTouchBarItem(identifier: identifier, autoResize: autoResize, filter: regex)
+                barItem = AppScrubberTouchBarItem(identifier: identifier, autoResize: autoResize, filter: regex, showDockApps: showDockApps)
             } else {
-                barItem = AppScrubberTouchBarItem(identifier: identifier, autoResize: autoResize)
+                barItem = AppScrubberTouchBarItem(identifier: identifier, autoResize: autoResize, showDockApps: showDockApps)
             }
         case .volume:
             if case let .image(source)? = item.additionalParameters[.image] {
