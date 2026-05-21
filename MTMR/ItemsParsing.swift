@@ -105,10 +105,7 @@ class SupportedTypesHolder {
             return (
                 item: .staticButton(title: ""),
                 actions: [
-                    Action(trigger: .singleTap, value: .custom(closure: {
-                        HIDPostAuxKey(NX_KEYTYPE_ILLUMINATION_UP)
-                        GenericKeyPress(keyCode: 145).send()
-                    }))
+                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_ILLUMINATION_UP))
                 ],
                 legacyAction: .none,
                 legacyLongAction: .none,
@@ -121,10 +118,7 @@ class SupportedTypesHolder {
             return (
                 item: .staticButton(title: ""),
                 actions: [
-                    Action(trigger: .singleTap, value: .custom(closure: {
-                        HIDPostAuxKey(NX_KEYTYPE_ILLUMINATION_DOWN)
-                        GenericKeyPress(keyCode: 144).send()
-                    }))
+                    Action(trigger: .singleTap, value: .hidKey(keycode: NX_KEYTYPE_ILLUMINATION_DOWN))
                 ],
                 legacyAction: .none,
                 legacyLongAction: .none,
