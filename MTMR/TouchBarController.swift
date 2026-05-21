@@ -327,6 +327,18 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
 
         if !changed {
+            let currentLeft = leftIdentifiers.filter { items[$0] != nil }
+            let previousLeft = leftIdentifiers.filter { prevItems[$0] != nil }
+            let currentCenter = centerIdentifiers.filter { items[$0] != nil }
+            let previousCenter = centerIdentifiers.filter { prevItems[$0] != nil }
+            let currentRight = rightIdentifiers.filter { items[$0] != nil }
+            let previousRight = rightIdentifiers.filter { prevItems[$0] != nil }
+            if currentLeft != previousLeft || currentCenter != previousCenter || currentRight != previousRight {
+                changed = true
+            }
+        }
+
+        if !changed {
             for (swipeItem, prevSwipeItem) in zip(swipeItems, prevSwipeItems) {
                 if !swipeItem.isEqual(prevSwipeItem) {
                     changed = true

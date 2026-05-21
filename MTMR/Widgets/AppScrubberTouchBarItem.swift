@@ -237,7 +237,15 @@ class AppScrubberTouchBarItem: NSCustomTouchBarItem {
                 continue
             }
 
-            if let bundleIdentifier = Bundle(url: URL(fileURLWithPath: fileURL))?.bundleIdentifier {
+            let appURL: URL?
+            if fileURL.hasPrefix("file://") {
+                appURL = URL(string: fileURL)
+            } else {
+                appURL = URL(fileURLWithPath: fileURL)
+            }
+
+            if let resolvedURL = appURL,
+               let bundleIdentifier = Bundle(url: resolvedURL)?.bundleIdentifier {
                 bundleIdentifiers.append(bundleIdentifier)
             }
         }
